@@ -1,54 +1,39 @@
-# opencode-tmux-session-status
+# opencode-cmux-status
 
-[GitHub](https://github.com/4m1z/opencode-tmux-session-status) · [npm](https://www.npmjs.com/package/opencode-tmux-session-status)
+OpenCode **2.x** plugin that surfaces agent activity in the **cmux** sidebar:
 
-OpenCode server plugin that stamps the owning tmux session with
-`@opencode_state` / `@opencode_state_at` / `@opencode_detail`, so a picker or
-status-line can show whether each session is `working` / `waiting` / `done` /
-`error` / `idle` without scraping pane contents. Terminal states (`done` /
-`waiting` / `error`) also fire a desktop notification (via `omarchy`,
-falling back to `notify-send`).
+- a status pill per project (`working`, `waiting`, `done`, `error`, `idle`)
+- a workspace progress bar (time-based estimate while working, 100% on done)
+- sidebar log lines on state changes
+- cmux notifications when input is needed, a run fails, or a turn finishes
 
-Built for the tmux-opencode-session-manager layout: one tmux session per
-project directory on a dedicated tmux server socket (default
-`opencode-popup`), named `oc_<cksum-of-dir>` (same hash as
-`scripts/helpers.sh session_hash`: `printf '%s' "$dir" | cksum`). The scripts
-live in the companion `tmux-opencode-session-manager` repository. The hash
-uses the **exact directory string** from the launcher's resolved cwd (or `$PWD`
-fallback), with no trimming, symlink resolution, or canonicalization. Configure
-OpenCode with that same location; a different spelling, trailing slash, or
-worktree directory intentionally hashes to a different tmux session.
+> **Fork of [`4m1z/opencode-tmux-session-status`](https://github.com/4m1z/opencode-tmux-session-status) (MIT).**
+> The state machine, V2 event decoding and hook wiring are upstream; the tmux
+> adapter was replaced with a cmux backend, and the plugin now tracks only the
+> project location it was loaded for. See [CHANGELOG.md](CHANGELOG.md).
+
+## Requirements
+
+- OpenCode 2 (`@opencode/plugin` `^2.0.0`)
+- [cmux](https://cmux.dev/) installed and on `PATH`
+- `CMUX_WORKSPACE_ID` present in the OpenCode server environment (it is when
+  OpenCode is started from a cmux-managed terminal)
+
+Outside cmux the plugin is a no-op. There is no tmux dependency.
 
 ## Install
 
-**From npm:**
-
 ```sh
-opencode plugin add opencode-tmux-session-status@latest
+opencode plugin add github:daropotter/opencode-cmux-status
 ```
 
-**From git or local checkout:**
-
-```sh
-opencode plugin add github:4m1z/opencode-tmux-session-status
-# or pin a ref:
-opencode plugin add github:4m1z/opencode-tmux-session-status#main
-```
-
-Or declare it in config (`opencode.json` / `opencode.jsonc`):
+or in `opencode.json` / `opencode.jsonc`:
 
 ```jsonc
 {
-  "plugins": ["opencode-tmux-session-status@latest"],
-  // "plugins": ["opencode-tmux-session-status@0.1.1"]
-  // "plugins": ["github:4m1z/opencode-tmux-session-status"]
-  // "plugins": ["./path/to/opencode-tmux-session-status"] // no build needed, loads from src/
+  "plugins": ["github:daropotter/opencode-cmux-status"],
 }
 ```
-
-Requires `tmux` and `cksum` on `PATH`. Notifications are best-effort:
-`omarchy notification send`, falling back to `notify-send`. Missing
-socket/session never breaks the run; the picker falls back to the API.
 
 ## Options
 
@@ -56,18 +41,18 @@ socket/session never breaks the run; the picker falls back to the API.
 {
   "plugins": [
     {
-      "package": "opencode-tmux-session-status@latest",
+      "package": "github:daropotter/opencode-cmux-status",
       "options": {
-        "socket": "opencode-popup", // tmux server socket (-L)
-        "prefix": "oc_", // session name prefix before the cksum hash
+        "bin": "cmux", // cmux executable (default: $OPENCODE_CMUX_BIN or "cmux")
+        "workspace": "6F707E24-...", // default: $CMUX_WORKSPACE_ID
+        "statusKeyPrefix": "opencode-", // prefix for per-project status keys
         "notifications": true,
-        "notifier": "auto", // auto/omarchy: omarchy then notify-send; notify-send: only notify-send
         "notificationCooldownMs": 120000,
         "changedDetailFloorMs": 15000,
-        "normalUrgency": "normal", // done
-        "attentionUrgency": "critical", // waiting/error
-        "notificationDetail": "full", // "state" hides question/error details on desktop
-        "debug": false,
+        "notificationDetail": "full", // "state" hides details in notifications
+        "progress": true,
+        "logs": true,
+        "debug": false, // rate-limited diagnostics on stderr
       },
     },
   ],
@@ -76,40 +61,44 @@ socket/session never breaks the run; the picker falls back to the API.
 
 ## State model
 
-| State     | Meaning                                                     |
-| --------- | ----------------------------------------------------------- |
-| `working` | agent is actively running                                   |
-| `waiting` | needs input: permission request or open question            |
-| `done`    | turn finished, unacknowledged (stays until ack on open)     |
-| `error`   | run failed / session errored (stays until next task starts) |
-| `idle`    | no work outstanding, acknowledged                           |
+| State     | Meaning                                        |
+| --------- | ---------------------------------------------- |
+| `working` | agent is actively running                      |
+| `waiting` | permission request or open question            |
+| `done`    | turn finished (persists until the next prompt) |
+| `error`   | run failed / question rejected                 |
+| `idle`    | session created, no work outstanding           |
 
-Completion is never inferred from silence; only explicit idle/error events
-produce `done` / `error`.
+Transitions come from OpenCode 2 events (`session.status`, `session.idle`,
+`session.error`, `permission.*`, `question.*` / `form.*`, tool hooks, prompt
+hooks) with the upstream state machine. Status pills are keyed per project
+directory (`<statusKeyPrefix>` + first 8 hex chars of SHA-1 of the directory),
+so multiple projects in one cmux workspace keep separate pills. Progress and
+notifications are workspace-level cmux resources.
 
-The project stamp belongs to one **foreground session ID** at a time: a new
-prompt or execution start can take ownership; old sessions' completion events
-cannot finish the new one. Queued prompts wait for execution to start. A
-permission or form request locks that run in `waiting` until its matching
-reply/cancellation. Approval/answer resumes `working`; denial reports
-`permission denied` as working without claiming approval, while question
-rejection/cancellation shows `error`. Interruption shows `error` rather than a
-successful completion; a `superseded` interruption is ignored because the new
-run supplies its own start event. Failed runs ignore later idle/completion events until
-new work starts; completed runs ignore ordinary busy/tool events until new
-work starts. `ack.sh` owns the `done → idle` transition. The plugin only
-updates `@opencode_state_at` on a state change, as the status line, picker and
-reconciler interpret it as **time entered**, not a heartbeat.
+## Differences from upstream
 
-OpenCode 2.0.21's shared `ctx.event.subscribe({ signal })` stream carries
-`{ type, location, data }` events. Earlier `question.*`, `session.next.*`, and
-`{ directory, payload: { type, properties } }` envelopes remain supported.
-Unlocated events resolve through the session ID cache or
-`ctx.session.get({ sessionID })`; an unresolvable event is ignored. When `debug`
-is enabled, concise failure/ignored-event diagnostics are rate-limited to once
-per minute per category. Notification and tmux failures do not interrupt the
-OpenCode run.
+- **cmux output backend** (`set-status`, `set-progress`, `log`, `notify`)
+  instead of tmux window options and `omarchy`/`notify-send`.
+- **Per-location tracking** — OpenCode instantiates a plugin per project
+  location while every instance sees the whole server event stream; this fork
+  ignores events that do not belong to its own location, so statuses, logs and
+  notifications are written once.
+- **Stable project keys** — SHA-1 of the directory instead of a `cksum` hash
+  and tmux session name.
+- **No acknowledgement flow** — there is no tmux `ack.sh`; `done` stays visible
+  until the next prompt starts.
+
+## Development
+
+```sh
+bun install
+bun test
+bun run typecheck
+bun run build
+```
 
 ## License
 
-MIT
+MIT. Original work Copyright (c) 2026 4m1z; fork modifications
+Copyright (c) 2026 daropotter. See [LICENSE](LICENSE).

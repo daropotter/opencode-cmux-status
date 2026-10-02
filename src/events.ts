@@ -1,3 +1,8 @@
+// Event decoding adapted from opencode-tmux-session-status (MIT, 4m1z).
+// Current OpenCode 2 servers emit { type, location, data } events; the legacy
+// { directory, payload: { type, properties } } envelopes and the older
+// question.* events stay supported.
+
 import type { Transition } from "./state";
 
 type RecordValue = Record<string, unknown>;
@@ -18,12 +23,8 @@ export interface Decoded {
   type?: string;
 }
 
-/** V2 events use {type,location,data}; question.* is a narrow compatibility
- * path for servers which emitted those events before form.* was introduced. */
 export function decode(raw: unknown): Decoded {
   const envelope = obj(raw);
-  // Earlier service builds emitted {directory,payload:{type,properties}};
-  // the installed V2 stream emits {type,location,data} directly.
   const event = nonempty(field(envelope.payload, "type"))
     ? obj(envelope.payload)
     : envelope;

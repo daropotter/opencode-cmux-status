@@ -1,3 +1,7 @@
+// State machine adapted from opencode-tmux-session-status (MIT, 4m1z).
+// https://github.com/4m1z/opencode-tmux-session-status
+// Kept unchanged so the cmux backend inherits the upstream behaviour.
+
 export type State = "working" | "waiting" | "done" | "error" | "idle";
 export type Signal =
   | "created"

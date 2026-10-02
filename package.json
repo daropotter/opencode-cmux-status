@@ -1,18 +1,23 @@
 {
-  "name": "opencode-tmux-session-status",
-  "version": "0.1.2",
-  "description": "Report opencode session status to tmux (working / waiting / done / error / idle) plus desktop notifications",
+  "name": "opencode-cmux-status",
+  "version": "0.1.0",
+  "description": "OpenCode 2 plugin that surfaces agent activity in the cmux sidebar: status pills, progress, logs and notifications. Fork of opencode-tmux-session-status with the tmux backend replaced by cmux.",
   "license": "MIT",
+  "author": "4m1z (original opencode-tmux-session-status), daropotter (cmux adaptation)",
   "repository": {
     "type": "git",
-    "url": "https://github.com/4m1z/opencode-tmux-status"
+    "url": "git+https://github.com/daropotter/opencode-cmux-status.git"
   },
-  "homepage": "https://github.com/4m1z/opencode-tmux-status#readme",
+  "homepage": "https://github.com/daropotter/opencode-cmux-status#readme",
+  "bugs": {
+    "url": "https://github.com/daropotter/opencode-cmux-status/issues"
+  },
   "keywords": [
     "opencode",
     "opencode-plugin",
-    "tmux",
-    "status"
+    "cmux",
+    "status",
+    "sidebar"
   ],
   "type": "module",
   "main": "./src/index.ts",
@@ -23,6 +28,7 @@
     "dist/",
     "src/",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "scripts": {
@@ -31,10 +37,10 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "lint": "tsc --noEmit",
-    "format:check": "prettier --check src tests README.md package.json tsconfig.json"
+    "format:check": "prettier --check src tests README.md CHANGELOG.md package.json tsconfig.json"
   },
   "dependencies": {
-    "@opencode/plugin": "latest"
+    "@opencode/plugin": "^2.0.0"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

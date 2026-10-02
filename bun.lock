@@ -5,7 +5,7 @@
     "": {
       "name": "opencode-tmux-status",
       "dependencies": {
-        "@opencode/plugin": "latest",
+        "@opencode/plugin": "^2.0.0",
       },
       "devDependencies": {
         "@types/node": "^26.6.3",

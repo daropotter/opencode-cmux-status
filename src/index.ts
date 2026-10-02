@@ -1,6 +1,16 @@
-import { Plugin } from "@opencode/plugin";
+// opencode-cmux-status
+//
+// OpenCode 2 plugin that surfaces agent activity in the cmux sidebar.
+// Adapted from opencode-tmux-session-status (MIT, 4m1z) — only the output
+// adapter changed (tmux -> cmux). State machine, event decoding and hook
+// wiring follow upstream.
+//
+// The plugin is a no-op outside cmux: it needs CMUX_WORKSPACE_ID (or an
+// explicit `workspace` option) to know which cmux workspace to update.
+
+import { resolve as resolvePath } from "node:path";
 import type { Context } from "@opencode/plugin/promise/plugin";
-import { Adapter, clean } from "./process";
+import { CmuxAdapter, clean } from "./cmux";
 import { decode, nonempty, type Decoded } from "./events";
 import { NotificationPolicy, StateMachine, type Transition } from "./state";
 
@@ -30,12 +40,10 @@ export async function resolveDirectory(
   }
 }
 
-export default Plugin.define({
-  id: "tmux-status",
-  async setup(ctx) {
-    const o = ctx.options;
-    const socket = nonempty(o.socket) || "opencode-popup";
-    const prefix = nonempty(o.prefix) || "oc_";
+export default {
+  id: "cmux-status",
+  async setup(ctx: Context) {
+    const o = (ctx.options ?? {}) as Record<string, unknown>;
     const controller = new AbortController();
     const debug = o.debug === true;
     const debugAt = new Map<string, number>();
@@ -47,26 +55,27 @@ export default Plugin.define({
       )
         return;
       debugAt.set(key, Date.now());
-      console.error(`[tmux-status] ${message}`);
+      console.error(`[cmux-status] ${message}`);
     };
-    const adapter = new Adapter(
-      socket,
-      prefix,
+
+    const workspace =
+      nonempty(o.workspace) ?? nonempty(process.env["CMUX_WORKSPACE_ID"]);
+    if (!workspace) {
+      diagnostic(
+        "cmux",
+        "CMUX_WORKSPACE_ID is not set and no workspace option was provided; plugin disabled",
+      );
+      return;
+    }
+
+    const adapter = new CmuxAdapter(
+      nonempty(o.bin) ?? nonempty(process.env["OPENCODE_CMUX_BIN"]) ?? "cmux",
+      workspace,
+      nonempty(o.statusKeyPrefix) ?? "opencode-",
       controller.signal,
       diagnostic,
-      o.notifier === "notify-send" || o.notifier === "omarchy"
-        ? o.notifier
-        : "auto",
-      {
-        normal:
-          o.normalUrgency === "low" || o.normalUrgency === "critical"
-            ? o.normalUrgency
-            : "normal",
-        attention:
-          o.attentionUrgency === "low" || o.attentionUrgency === "normal"
-            ? o.attentionUrgency
-            : "critical",
-      },
+      o.progress !== false,
+      o.logs !== false,
     );
     const machine = new StateMachine();
     const notifications = new NotificationPolicy(
@@ -81,6 +90,14 @@ export default Plugin.define({
         ? o.changedDetailFloorMs
         : 15_000,
     );
+    // OpenCode instantiates a plugin once per location while every instance
+    // sees the whole server event stream. Only react to the location this
+    // instance was loaded for, otherwise every location would write the same
+    // status/log/notification.
+    const locationDir = nonempty(ctx.location?.directory);
+    const owns = (dir: string) =>
+      !locationDir || resolvePath(dir) === resolvePath(locationDir);
+
     const directories = new Map<string, string>();
     let queue: Promise<void> = Promise.resolve();
 
@@ -106,6 +123,13 @@ export default Plugin.define({
           if (controller.signal.aborted) return;
           if (!dir) {
             diagnostic("directory", "unresolved session directory");
+            return;
+          }
+          if (!owns(dir)) {
+            diagnostic(
+              "location",
+              `ignored ${event.type || "event"} for another location`,
+            );
             return;
           }
           const before = machine.project.get(dir);
@@ -197,6 +221,7 @@ export default Plugin.define({
       );
       await subscription;
       await queue;
+      await adapter.clear();
     };
   },
-});
+};
