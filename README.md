@@ -1,5 +1,7 @@
 # opencode-cmux-status
 
+[![npm version](https://img.shields.io/npm/v/opencode-cmux-status?style=flat-square)](https://www.npmjs.com/package/opencode-cmux-status)
+
 OpenCode **2.x** plugin that surfaces agent activity in the **cmux** sidebar:
 
 - a status pill per project (`working`, `waiting`, `done`, `error`, `idle`)
@@ -36,8 +38,6 @@ or in `opencode.json` / `opencode.jsonc`:
   "plugins": ["opencode-cmux-status"],
 }
 ```
-
-> npm publication is pending; the package name is reserved for this repo.
 
 ### From a local checkout
 

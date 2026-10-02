@@ -1,6 +1,6 @@
 {
   "name": "opencode-cmux-status",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "OpenCode 2 plugin that surfaces agent activity in the cmux sidebar: status pills, progress, logs and notifications. Fork of opencode-tmux-session-status with the tmux backend replaced by cmux.",
   "license": "MIT",
   "author": "4m1z (original opencode-tmux-session-status), daropotter (cmux adaptation)",
