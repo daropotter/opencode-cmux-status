@@ -23,16 +23,45 @@ Outside cmux the plugin is a no-op. There is no tmux dependency.
 
 ## Install
 
+### npm
+
 ```sh
-opencode plugin add github:daropotter/opencode-cmux-status
+opencode plugin add opencode-cmux-status
 ```
 
 or in `opencode.json` / `opencode.jsonc`:
 
 ```jsonc
 {
-  "plugins": ["github:daropotter/opencode-cmux-status"],
+  "plugins": ["opencode-cmux-status"],
 }
+```
+
+> npm publication is pending; the package name is reserved for this repo.
+
+### From a local checkout
+
+OpenCode 2.0.18 cannot install `github:` plugin specs
+(`NpmInstallFailedError: git dep preparation failed`); the same failure
+happens with the upstream package, so it is an OpenCode-side issue. Until it
+is fixed, install from a local checkout:
+
+```sh
+git clone https://github.com/daropotter/opencode-cmux-status \
+  ~/.config/opencode/plugins/opencode-cmux-status
+```
+
+Then create `~/.config/opencode/plugins/opencode-cmux-status.js`:
+
+```js
+export { default } from "./opencode-cmux-status/src/index.ts";
+```
+
+OpenCode auto-discovers direct `.js` / `.ts` files in
+`~/.config/opencode/plugins/`. Update later with:
+
+```sh
+git -C ~/.config/opencode/plugins/opencode-cmux-status pull
 ```
 
 ## Options
@@ -41,7 +70,7 @@ or in `opencode.json` / `opencode.jsonc`:
 {
   "plugins": [
     {
-      "package": "github:daropotter/opencode-cmux-status",
+      "package": "opencode-cmux-status",
       "options": {
         "bin": "cmux", // cmux executable (default: $OPENCODE_CMUX_BIN or "cmux")
         "workspace": "6F707E24-...", // default: $CMUX_WORKSPACE_ID
